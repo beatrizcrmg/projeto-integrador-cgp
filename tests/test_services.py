@@ -19,6 +19,8 @@ class FinanceServiceTests(unittest.TestCase):
         expense = self.service.add("expense", "Mercado", "Alimentação", "250,50", "2026-10-12")
         filtered = self.service.transactions(kind="expense", start_date="01/10/2026", end_date="31/10/2026")
         self.assertEqual([item.id for item in filtered], [expense.id])
+        searched = self.service.transactions(keyword="Mercado", kind="expense", category="Alimentação", start_date="12/10/2026", end_date="12/10/2026")
+        self.assertEqual([item.id for item in searched], [expense.id])
         summary = self.service.summary(self.service.transactions())
         self.assertEqual((summary.income_cents, summary.expense_cents, summary.balance_cents), (200000, 25050, 174950))
         changed = self.service.update(income.id, "income", "Pagamento", "Salário", "2.100,00", "13/10/2026")
@@ -30,6 +32,10 @@ class FinanceServiceTests(unittest.TestCase):
         for values in (("income", "Trabalho", "Salário", "0,00", "13/10/2026"), ("expense", "Conta", "Moradia", "10,00", "31/02/2026")):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 self.service.add(*values)
+
+    def test_rejects_reversed_date_range(self):
+        with self.assertRaises(ValueError):
+            self.service.transactions(start_date="02/11/2026", end_date="01/11/2026")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,12 @@ class CGPApplication:
         self.amount_var = tk.StringVar()
         self.date_var = tk.StringVar(value=date.today().strftime("%d/%m/%Y"))
         self.status_var = tk.StringVar()
+        self.search_var = tk.StringVar()
+        self.type_filter_var = tk.StringVar(value="Todos")
+        self.category_filter_var = tk.StringVar(value="Todas")
+        self.start_date_var = tk.StringVar()
+        self.end_date_var = tk.StringVar()
+        self.editing_id = None
         self._configure_style()
         self._build()
         self._load_categories()
@@ -69,7 +75,8 @@ class CGPApplication:
         self.category_box.grid(row=2, column=2, sticky="ew", padx=(0, 10))
         self.ttk.Entry(form, textvariable=self.amount_var, width=14).grid(row=2, column=3, sticky="ew", padx=(0, 10))
         self.ttk.Entry(form, textvariable=self.date_var, width=12).grid(row=2, column=4, sticky="ew", padx=(0, 10))
-        self.ttk.Button(form, text="Adicionar movimentação", style="Primary.TButton", command=self.add_transaction).grid(row=2, column=5, sticky="ew")
+        self.submit_button = self.ttk.Button(form, text="Adicionar movimentação", style="Primary.TButton", command=self.add_transaction)
+        self.submit_button.grid(row=2, column=5, sticky="ew")
         for column, weight in enumerate((1, 2, 1, 1, 1, 0)):
             form.columnconfigure(column, weight=weight)
         self.root.bind("<Return>", self._on_return)
@@ -89,6 +96,24 @@ class CGPApplication:
         self.ttk.Label(heading, text="Movimentações cadastradas", style="Section.TLabel").pack(side="left")
         self.period_label = self.ttk.Label(heading, text="Todos os períodos", style="Field.TLabel")
         self.period_label.pack(side="right")
+        filters = self.ttk.Frame(listing, style="Card.TFrame")
+        filters.pack(fill="x", pady=(0, 8))
+        filter_fields = (
+            ("Buscar", self.ttk.Entry(filters, textvariable=self.search_var), 20),
+            ("Tipo", self.ttk.Combobox(filters, textvariable=self.type_filter_var, values=("Todos", "Receitas", "Despesas"), state="readonly"), 12),
+            ("Categoria", self.ttk.Combobox(filters, textvariable=self.category_filter_var, values=("Todas",), state="readonly"), 16),
+            ("De (DD/MM/AAAA)", self.ttk.Entry(filters, textvariable=self.start_date_var), 14),
+            ("Até (DD/MM/AAAA)", self.ttk.Entry(filters, textvariable=self.end_date_var), 14),
+        )
+        self.category_filter_box = filter_fields[2][1]
+        for column, (label, widget, width) in enumerate(filter_fields):
+            self.ttk.Label(filters, text=label, style="Field.TLabel").grid(row=0, column=column, sticky="w", padx=(0, 6))
+            widget.configure(width=width)
+            widget.grid(row=1, column=column, sticky="ew", padx=(0, 8))
+        self.ttk.Button(filters, text="Aplicar", command=self.refresh).grid(row=1, column=5, sticky="ew", padx=(0, 5))
+        self.ttk.Button(filters, text="Limpar", command=self.clear_filters).grid(row=1, column=6, sticky="ew")
+        for column, weight in enumerate((2, 1, 1, 1, 1, 0, 0)):
+            filters.columnconfigure(column, weight=weight)
         columns = ("kind", "description", "category", "date", "amount")
         self.table = self.ttk.Treeview(listing, columns=columns, show="headings", selectmode="browse")
         headings = (("kind", "Tipo", 105), ("description", "Descrição", 360), ("category", "Categoria", 220), ("date", "Data", 130), ("amount", "Valor (R$)", 150))
@@ -99,6 +124,7 @@ class CGPApplication:
         self.empty_label = self.ttk.Label(listing, text="Nenhuma movimentação cadastrada ainda.", style="Field.TLabel")
         actions = self.ttk.Frame(listing, style="Card.TFrame")
         actions.pack(fill="x", pady=(10, 0))
+        self.ttk.Button(actions, text="Editar selecionada", style="Primary.TButton", command=self.begin_edit).pack(side="left", padx=(0, 8))
         self.ttk.Button(actions, text="Excluir movimentação selecionada", style="Primary.TButton", command=self.delete_transaction).pack(side="left")
         self.status_label = self.ttk.Label(actions, textvariable=self.status_var, style="Field.TLabel")
         self.status_label.pack(side="right")
@@ -132,15 +158,54 @@ class CGPApplication:
         from tkinter import messagebox
 
         try:
-            self.service.add(self.kind_var.get(), self.description_var.get(), self.category_var.get(), self.amount_var.get(), self.date_var.get())
+            values = (self.kind_var.get(), self.description_var.get(), self.category_var.get(), self.amount_var.get(), self.date_var.get())
+            if self.editing_id is None:
+                self.service.add(*values)
+                self.status_var.set("Movimentação adicionada.")
+            else:
+                self.service.update(self.editing_id, *values)
+                self.status_var.set("Movimentação atualizada.")
         except (ValueError, RuntimeError) as error:
             messagebox.showerror("Não foi possível adicionar", str(error), parent=self.root)
             return
         self.description_var.set("")
         self.amount_var.set("")
-        self.status_var.set("Movimentação adicionada.")
+        self.editing_id = None
+        self.submit_button.configure(text="Adicionar movimentação")
         self.refresh()
         self.description_entry.focus_set()
+
+    def begin_edit(self):
+        from tkinter import messagebox
+
+        selected = self.table.selection()
+        if not selected:
+            messagebox.showwarning("Selecione uma movimentação", "Selecione uma linha para editar.", parent=self.root)
+            return
+        transaction_id = int(selected[0])
+        transaction = next((item for item in self.service.transactions() if item.id == transaction_id), None)
+        if transaction is None:
+            self.status_var.set("A movimentação selecionada não está mais disponível.")
+            self.refresh()
+            return
+        self.editing_id = transaction_id
+        self.kind_var.set(transaction.kind.value)
+        self.kind_display_var.set("Receita" if transaction.kind is TransactionType.INCOME else "Despesa")
+        self.description_var.set(transaction.description)
+        self.category_var.set(transaction.category)
+        self._load_categories()
+        self.amount_var.set(f"{transaction.amount_cents // 100},{transaction.amount_cents % 100:02d}")
+        self.date_var.set(transaction.occurred_on.strftime("%d/%m/%Y"))
+        self.submit_button.configure(text="Salvar alterações")
+        self.description_entry.focus_set()
+
+    def clear_filters(self):
+        self.search_var.set("")
+        self.type_filter_var.set("Todos")
+        self.category_filter_var.set("Todas")
+        self.start_date_var.set("")
+        self.end_date_var.set("")
+        self.refresh()
 
     def delete_transaction(self):
         from tkinter import messagebox
@@ -160,11 +225,31 @@ class CGPApplication:
         self.refresh()
 
     def refresh(self):
-        transactions = self.service.transactions()
+        from tkinter import messagebox
+
+        type_mapping = {"Receitas": "income", "Despesas": "expense"}
+        selected_category = self.category_filter_var.get()
+        try:
+            transactions = self.service.transactions(
+                self.search_var.get(),
+                type_mapping.get(self.type_filter_var.get()),
+                selected_category if selected_category and selected_category != "Todas" else None,
+                self.start_date_var.get(),
+                self.end_date_var.get(),
+            )
+        except (ValueError, RuntimeError) as error:
+            messagebox.showerror("Filtros inválidos", str(error), parent=self.root)
+            return
         summary = self.service.summary(transactions)
         self.income_value.configure(text=format_brl(summary.income_cents))
         self.expense_value.configure(text=format_brl(summary.expense_cents))
         self.balance_value.configure(text=format_brl(summary.balance_cents))
+        start = self.start_date_var.get().strip()
+        end = self.end_date_var.get().strip()
+        self.period_label.configure(text=f"{start or 'Início'} a {end or 'Hoje'}" if start or end else "Todos os períodos")
+        categories = self.service.categories()
+        category_names = tuple(dict.fromkeys(category.name for category in categories))
+        self.category_filter_box.configure(values=("Todas", *category_names))
         self.table.delete(*self.table.get_children())
         for transaction in transactions:
             label = "Receita" if transaction.kind is TransactionType.INCOME else "Despesa"

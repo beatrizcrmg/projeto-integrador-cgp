@@ -24,7 +24,11 @@ class FinanceService:
         self.repository.delete_transaction(transaction_id)
 
     def transactions(self, keyword="", kind=None, category=None, start_date=None, end_date=None):
-        return self.repository.list_transactions(keyword, kind, category, self._optional_date(start_date), self._optional_date(end_date))
+        start = self._optional_date(start_date)
+        end = self._optional_date(end_date)
+        if start and end and start > end:
+            raise ValueError("A data inicial deve ser anterior ou igual à data final.")
+        return self.repository.list_transactions(keyword, kind, category, start, end)
 
     def summary(self, transactions):
         return summarize(transactions)
