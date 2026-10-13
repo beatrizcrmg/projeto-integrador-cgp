@@ -1,6 +1,190 @@
+from datetime import date
+
+from cgp.domain import TransactionType, format_brl
+from cgp.services.finance import FinanceService
+from cgp.storage import SQLiteRepository
+
+
+class CGPApplication:
+    def __init__(self, root, service):
+        import tkinter as tk
+        from tkinter import ttk
+
+        self.tk = tk
+        self.ttk = ttk
+        self.root = root
+        self.service = service
+        self.root.title("CGP — Controle de Gastos Pessoais")
+        self.root.geometry("1240x820")
+        self.root.minsize(920, 680)
+        self.root.configure(bg="#f4f7fb")
+        self.kind_var = tk.StringVar(value=TransactionType.EXPENSE.value)
+        self.kind_display_var = tk.StringVar(value="Despesa")
+        self.description_var = tk.StringVar()
+        self.category_var = tk.StringVar()
+        self.amount_var = tk.StringVar()
+        self.date_var = tk.StringVar(value=date.today().strftime("%d/%m/%Y"))
+        self.status_var = tk.StringVar()
+        self._configure_style()
+        self._build()
+        self._load_categories()
+        self.refresh()
+
+    def _configure_style(self):
+        style = self.ttk.Style(self.root)
+        style.theme_use("clam")
+        style.configure("App.TFrame", background="#f4f7fb")
+        style.configure("Card.TFrame", background="#ffffff", relief="solid", borderwidth=1)
+        style.configure("Header.TLabel", background="#174b86", foreground="#ffffff", font=("TkDefaultFont", 22, "bold"))
+        style.configure("Section.TLabel", background="#ffffff", foreground="#174b86", font=("TkDefaultFont", 13, "bold"))
+        style.configure("Field.TLabel", background="#ffffff", foreground="#174b86", font=("TkDefaultFont", 10, "bold"))
+        style.configure("MetricTitle.TLabel", background="#ffffff", foreground="#174b86", font=("TkDefaultFont", 11, "bold"))
+        style.configure("Income.TLabel", background="#ffffff", foreground="#27835f", font=("TkDefaultFont", 20, "bold"))
+        style.configure("Expense.TLabel", background="#ffffff", foreground="#d94c4c", font=("TkDefaultFont", 20, "bold"))
+        style.configure("Balance.TLabel", background="#ffffff", foreground="#1264c8", font=("TkDefaultFont", 20, "bold"))
+        style.configure("Primary.TButton", font=("TkDefaultFont", 10, "bold"), padding=(14, 9))
+        style.map("Primary.TButton", background=[("active", "#0f58ad")])
+        style.configure("Treeview", rowheight=32, font=("TkDefaultFont", 10), background="#ffffff", fieldbackground="#ffffff")
+        style.configure("Treeview.Heading", font=("TkDefaultFont", 10, "bold"), background="#eaf2fc", foreground="#174b86", padding=8)
+
+    def _build(self):
+        outer = self.ttk.Frame(self.root, style="App.TFrame", padding=(18, 18))
+        outer.pack(fill="both", expand=True)
+        header = self.ttk.Frame(outer, style="Card.TFrame", padding=(20, 17))
+        header.pack(fill="x", pady=(0, 14))
+        self.ttk.Label(header, text="CGP — Controle de Gastos Pessoais", style="Header.TLabel", padding=(12, 4)).pack(anchor="w", fill="x")
+
+        form = self.ttk.Frame(outer, style="Card.TFrame", padding=(16, 14))
+        form.pack(fill="x", pady=(0, 14))
+        self.ttk.Label(form, text="Nova movimentação", style="Section.TLabel").grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, 12))
+        fields = (("Tipo", 0), ("Descrição", 1), ("Categoria", 2), ("Valor (R$)", 3), ("Data", 4))
+        for label, column in fields:
+            self.ttk.Label(form, text=label, style="Field.TLabel").grid(row=1, column=column, sticky="w", padx=(0, 10), pady=(0, 5))
+        self.kind_box = self.ttk.Combobox(form, textvariable=self.kind_display_var, values=("Despesa", "Receita"), state="readonly", width=13)
+        self.kind_box.grid(row=2, column=0, sticky="ew", padx=(0, 10))
+        self.kind_box.bind("<<ComboboxSelected>>", self._on_kind_changed)
+        self.description_entry = self.ttk.Entry(form, textvariable=self.description_var)
+        self.description_entry.grid(row=2, column=1, sticky="ew", padx=(0, 10))
+        self.category_box = self.ttk.Combobox(form, textvariable=self.category_var, state="readonly")
+        self.category_box.grid(row=2, column=2, sticky="ew", padx=(0, 10))
+        self.ttk.Entry(form, textvariable=self.amount_var, width=14).grid(row=2, column=3, sticky="ew", padx=(0, 10))
+        self.ttk.Entry(form, textvariable=self.date_var, width=12).grid(row=2, column=4, sticky="ew", padx=(0, 10))
+        self.ttk.Button(form, text="Adicionar movimentação", style="Primary.TButton", command=self.add_transaction).grid(row=2, column=5, sticky="ew")
+        for column, weight in enumerate((1, 2, 1, 1, 1, 0)):
+            form.columnconfigure(column, weight=weight)
+        self.root.bind("<Return>", self._on_return)
+
+        metrics = self.ttk.Frame(outer, style="App.TFrame")
+        metrics.pack(fill="x", pady=(0, 14))
+        self.income_value = self._metric(metrics, "Receitas", "Income.TLabel", 0)
+        self.expense_value = self._metric(metrics, "Despesas", "Expense.TLabel", 1)
+        self.balance_value = self._metric(metrics, "Saldo", "Balance.TLabel", 2)
+        for column in range(3):
+            metrics.columnconfigure(column, weight=1, uniform="metrics")
+
+        listing = self.ttk.Frame(outer, style="Card.TFrame", padding=(14, 12))
+        listing.pack(fill="both", expand=True)
+        heading = self.ttk.Frame(listing, style="Card.TFrame")
+        heading.pack(fill="x", pady=(0, 8))
+        self.ttk.Label(heading, text="Movimentações cadastradas", style="Section.TLabel").pack(side="left")
+        self.period_label = self.ttk.Label(heading, text="Todos os períodos", style="Field.TLabel")
+        self.period_label.pack(side="right")
+        columns = ("kind", "description", "category", "date", "amount")
+        self.table = self.ttk.Treeview(listing, columns=columns, show="headings", selectmode="browse")
+        headings = (("kind", "Tipo", 105), ("description", "Descrição", 360), ("category", "Categoria", 220), ("date", "Data", 130), ("amount", "Valor (R$)", 150))
+        for column, title, width in headings:
+            self.table.heading(column, text=title)
+            self.table.column(column, width=width, minwidth=80, anchor="w" if column in ("description", "category") else "center", stretch=True)
+        self.table.pack(fill="both", expand=True)
+        self.empty_label = self.ttk.Label(listing, text="Nenhuma movimentação cadastrada ainda.", style="Field.TLabel")
+        actions = self.ttk.Frame(listing, style="Card.TFrame")
+        actions.pack(fill="x", pady=(10, 0))
+        self.ttk.Button(actions, text="Excluir movimentação selecionada", style="Primary.TButton", command=self.delete_transaction).pack(side="left")
+        self.status_label = self.ttk.Label(actions, textvariable=self.status_var, style="Field.TLabel")
+        self.status_label.pack(side="right")
+
+    def _metric(self, parent, title, style, column):
+        card = self.ttk.Frame(parent, style="Card.TFrame", padding=(17, 15))
+        card.grid(row=0, column=column, sticky="ew", padx=(0 if column == 0 else 6, 0 if column == 2 else 6))
+        self.ttk.Label(card, text=title, style="MetricTitle.TLabel").pack(anchor="w")
+        value = self.ttk.Label(card, text="R$ 0,00", style=style)
+        value.pack(anchor="w", pady=(4, 0))
+        return value
+
+    def _load_categories(self):
+        categories = self.service.categories(self.kind_var.get())
+        self.category_box.configure(values=tuple(category.name for category in categories))
+        if categories and self.category_var.get() not in self.category_box.cget("values"):
+            preferred = "Alimentação" if self.kind_var.get() == TransactionType.EXPENSE.value else "Salário"
+            self.category_var.set(preferred if preferred in self.category_box.cget("values") else categories[0].name)
+
+    def _on_kind_changed(self, event=None):
+        value = self.kind_display_var.get()
+        self.kind_var.set(TransactionType.INCOME.value if value == "Receita" else TransactionType.EXPENSE.value)
+        self._load_categories()
+
+    def _on_return(self, event):
+        if self.root.focus_get() is self.description_entry:
+            self.add_transaction()
+            return "break"
+
+    def add_transaction(self):
+        from tkinter import messagebox
+
+        try:
+            self.service.add(self.kind_var.get(), self.description_var.get(), self.category_var.get(), self.amount_var.get(), self.date_var.get())
+        except (ValueError, RuntimeError) as error:
+            messagebox.showerror("Não foi possível adicionar", str(error), parent=self.root)
+            return
+        self.description_var.set("")
+        self.amount_var.set("")
+        self.status_var.set("Movimentação adicionada.")
+        self.refresh()
+        self.description_entry.focus_set()
+
+    def delete_transaction(self):
+        from tkinter import messagebox
+
+        selected = self.table.selection()
+        if not selected:
+            messagebox.showwarning("Selecione uma movimentação", "Selecione uma linha para excluir.", parent=self.root)
+            return
+        if not messagebox.askyesno("Confirmar exclusão", "Deseja excluir a movimentação selecionada?", parent=self.root):
+            return
+        try:
+            self.service.delete(int(selected[0]))
+        except RuntimeError as error:
+            messagebox.showerror("Não foi possível excluir", str(error), parent=self.root)
+            return
+        self.status_var.set("Movimentação excluída.")
+        self.refresh()
+
+    def refresh(self):
+        transactions = self.service.transactions()
+        summary = self.service.summary(transactions)
+        self.income_value.configure(text=format_brl(summary.income_cents))
+        self.expense_value.configure(text=format_brl(summary.expense_cents))
+        self.balance_value.configure(text=format_brl(summary.balance_cents))
+        self.table.delete(*self.table.get_children())
+        for transaction in transactions:
+            label = "Receita" if transaction.kind is TransactionType.INCOME else "Despesa"
+            self.table.insert("", "end", iid=str(transaction.id), values=(label, transaction.description, transaction.category, transaction.occurred_on.strftime("%d/%m/%Y"), format_brl(transaction.amount_cents)))
+        if transactions:
+            self.empty_label.pack_forget()
+        else:
+            self.empty_label.pack(fill="x", pady=9, before=self.table)
+
+
 def main():
     import tkinter as tk
+    from tkinter import messagebox
 
     root = tk.Tk()
-    root.title("CGP — Controle de Gastos Pessoais")
+    try:
+        repository = SQLiteRepository()
+        CGPApplication(root, FinanceService(repository))
+    except Exception as error:
+        messagebox.showerror("CGP", f"Não foi possível iniciar o aplicativo: {error}", parent=root)
+        root.destroy()
+        return
     root.mainloop()
