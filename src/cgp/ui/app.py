@@ -115,12 +115,19 @@ class CGPApplication:
         for column, weight in enumerate((2, 1, 1, 1, 1, 0, 0)):
             filters.columnconfigure(column, weight=weight)
         columns = ("kind", "description", "category", "date", "amount")
-        self.table = self.ttk.Treeview(listing, columns=columns, show="headings", selectmode="browse")
+        self.table_frame = self.ttk.Frame(listing, style="Card.TFrame")
+        self.table_frame.pack(fill="both", expand=True)
+        self.table = self.ttk.Treeview(self.table_frame, columns=columns, show="headings", selectmode="browse", height=5)
         headings = (("kind", "Tipo", 105), ("description", "Descrição", 360), ("category", "Categoria", 220), ("date", "Data", 130), ("amount", "Valor (R$)", 150))
         for column, title, width in headings:
             self.table.heading(column, text=title)
             self.table.column(column, width=width, minwidth=80, anchor="w" if column in ("description", "category") else "center", stretch=True)
-        self.table.pack(fill="both", expand=True)
+        scrollbar = self.ttk.Scrollbar(self.table_frame, orient="vertical", command=self.table.yview)
+        self.table.configure(yscrollcommand=scrollbar.set)
+        self.table.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.table_frame.rowconfigure(0, weight=1)
+        self.table_frame.columnconfigure(0, weight=1)
         self.empty_label = self.ttk.Label(listing, text="Nenhuma movimentação cadastrada ainda.", style="Field.TLabel")
         actions = self.ttk.Frame(listing, style="Card.TFrame")
         actions.pack(fill="x", pady=(10, 0))
@@ -279,7 +286,7 @@ class CGPApplication:
         if transactions:
             self.empty_label.pack_forget()
         else:
-            self.empty_label.pack(fill="x", pady=9, before=self.table)
+            self.empty_label.pack(fill="x", pady=9, before=self.table_frame)
 
     def _filtered_transactions(self):
         type_mapping = {"Receitas": "income", "Despesas": "expense"}
