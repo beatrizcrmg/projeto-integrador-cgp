@@ -10,6 +10,15 @@ class FinanceService:
     def categories(self, kind=None):
         return self.repository.categories(kind)
 
+    def create_category(self, name, kind):
+        return self.repository.create_category(name, kind)
+
+    def rename_category(self, category_id, name):
+        return self.repository.rename_category(category_id, name)
+
+    def delete_category(self, category_id):
+        return self.repository.delete_category(category_id)
+
     def add(self, kind, description, category, amount, occurred_on):
         transaction = Transaction(kind, description, category, parse_amount(amount), self._parse_date(occurred_on))
         transaction_id = self.repository.add_transaction(transaction)

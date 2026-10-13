@@ -126,6 +126,7 @@ class CGPApplication:
         actions.pack(fill="x", pady=(10, 0))
         self.ttk.Button(actions, text="Editar selecionada", style="Primary.TButton", command=self.begin_edit).pack(side="left", padx=(0, 8))
         self.ttk.Button(actions, text="Excluir movimentação selecionada", style="Primary.TButton", command=self.delete_transaction).pack(side="left")
+        self.ttk.Button(actions, text="Gerenciar categorias", style="Primary.TButton", command=self.open_categories).pack(side="left", padx=(8, 0))
         self.status_label = self.ttk.Label(actions, textvariable=self.status_var, style="Field.TLabel")
         self.status_label.pack(side="right")
 
@@ -205,6 +206,15 @@ class CGPApplication:
         self.category_filter_var.set("Todas")
         self.start_date_var.set("")
         self.end_date_var.set("")
+        self.refresh()
+
+    def open_categories(self):
+        from cgp.ui.categories import CategoryManager
+
+        CategoryManager(self.root, self.service, self._categories_changed)
+
+    def _categories_changed(self):
+        self._load_categories()
         self.refresh()
 
     def delete_transaction(self):

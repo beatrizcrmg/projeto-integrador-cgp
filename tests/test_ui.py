@@ -42,6 +42,28 @@ class UserInterfaceTests(unittest.TestCase):
         application.add_transaction()
         self.assertEqual(self.service.transactions(keyword="Salário")[0].amount_cents, 130000)
 
+    def test_category_manager_creates_renames_and_deletes_categories(self):
+        from cgp.ui.categories import CategoryManager
+
+        changes = []
+        manager = CategoryManager(self.root, self.service, lambda: changes.append(True))
+        manager.kind_var.set("Receita")
+        manager._load()
+        manager.name_var.set("Rendimentos")
+        manager._create()
+        manager.listbox.selection_set(manager.listbox.get(0, "end").index("Rendimentos"))
+        manager._select()
+        manager.name_var.set("Renda extra")
+        manager._rename()
+        manager.listbox.selection_set(manager.listbox.get(0, "end").index("Renda extra"))
+        from unittest.mock import patch
+
+        with patch("tkinter.messagebox.askyesno", return_value=True):
+            manager._delete()
+        self.assertEqual(len(changes), 3)
+        self.assertFalse(any(category.name == "Renda extra" for category in self.service.categories("income")))
+        manager.window.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()
