@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
 from cgp.domain import Transaction, parse_amount, summarize
+from cgp.services.export import export_transactions
 
 
 class FinanceService:
@@ -41,6 +42,9 @@ class FinanceService:
 
     def summary(self, transactions):
         return summarize(transactions)
+
+    def export_csv(self, transactions, destination):
+        return export_transactions(transactions, destination)
 
     @staticmethod
     def _parse_date(value):

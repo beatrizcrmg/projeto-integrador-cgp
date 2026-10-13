@@ -127,6 +127,7 @@ class CGPApplication:
         self.ttk.Button(actions, text="Editar selecionada", style="Primary.TButton", command=self.begin_edit).pack(side="left", padx=(0, 8))
         self.ttk.Button(actions, text="Excluir movimentação selecionada", style="Primary.TButton", command=self.delete_transaction).pack(side="left")
         self.ttk.Button(actions, text="Gerenciar categorias", style="Primary.TButton", command=self.open_categories).pack(side="left", padx=(8, 0))
+        self.ttk.Button(actions, text="Exportar CSV", style="Primary.TButton", command=self.export_csv).pack(side="left", padx=(8, 0))
         self.status_label = self.ttk.Label(actions, textvariable=self.status_var, style="Field.TLabel")
         self.status_label.pack(side="right")
 
@@ -217,6 +218,25 @@ class CGPApplication:
         self._load_categories()
         self.refresh()
 
+    def export_csv(self):
+        from tkinter import filedialog, messagebox
+
+        destination = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Exportar movimentações",
+            defaultextension=".csv",
+            filetypes=(("Arquivo CSV", "*.csv"),),
+        )
+        if not destination:
+            return
+        try:
+            transactions = self._filtered_transactions()
+            self.service.export_csv(transactions, destination)
+        except (ValueError, RuntimeError) as error:
+            messagebox.showerror("Falha na exportação", str(error), parent=self.root)
+            return
+        messagebox.showinfo("Exportação concluída", "As movimentações filtradas foram exportadas.", parent=self.root)
+
     def delete_transaction(self):
         from tkinter import messagebox
 
@@ -237,16 +257,8 @@ class CGPApplication:
     def refresh(self):
         from tkinter import messagebox
 
-        type_mapping = {"Receitas": "income", "Despesas": "expense"}
-        selected_category = self.category_filter_var.get()
         try:
-            transactions = self.service.transactions(
-                self.search_var.get(),
-                type_mapping.get(self.type_filter_var.get()),
-                selected_category if selected_category and selected_category != "Todas" else None,
-                self.start_date_var.get(),
-                self.end_date_var.get(),
-            )
+            transactions = self._filtered_transactions()
         except (ValueError, RuntimeError) as error:
             messagebox.showerror("Filtros inválidos", str(error), parent=self.root)
             return
@@ -268,6 +280,17 @@ class CGPApplication:
             self.empty_label.pack_forget()
         else:
             self.empty_label.pack(fill="x", pady=9, before=self.table)
+
+    def _filtered_transactions(self):
+        type_mapping = {"Receitas": "income", "Despesas": "expense"}
+        selected_category = self.category_filter_var.get()
+        return self.service.transactions(
+            self.search_var.get(),
+            type_mapping.get(self.type_filter_var.get()),
+            selected_category if selected_category and selected_category != "Todas" else None,
+            self.start_date_var.get(),
+            self.end_date_var.get(),
+        )
 
 
 def main():
