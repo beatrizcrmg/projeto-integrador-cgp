@@ -26,17 +26,25 @@ sudo apt install python3 python3-venv python3-tk
 ## Instalação e execução local
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-PYTHONPATH=src python -m cgp
+make help
+make setup
+make run
 ```
 
 O aplicativo usa apenas bibliotecas incluídas no Python e salva o banco em `~/.local/share/cgp/cgp.sqlite3`, respeitando `XDG_DATA_HOME` quando definido.
 
+## Capturas de tela
+
+As imagens mostram somente as janelas do aplicativo, sem a janela de terminal.
+
+![Painel principal do CGP](docs/images/cgp-dashboard.png)
+
+![Gerenciamento de categorias do CGP](docs/images/cgp-categories.png)
+
 ## Testes
 
-Ative o ambiente virtual e execute:
+Execute a suíte de testes com:
 
 ```sh
-PYTHONPATH=src python -m unittest discover -s tests -v
+make test
 ```
