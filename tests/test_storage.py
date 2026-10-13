@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from cgp.domain import Transaction
 from cgp.storage import CategoryInUseError, SQLiteRepository, StorageError
@@ -51,6 +52,11 @@ class SQLiteRepositoryTests(unittest.TestCase):
         with self.assertRaises(StorageError):
             SQLiteRepository(damaged)
         self.assertEqual(damaged.read_text(encoding="utf-8"), "preservar")
+
+    def test_default_database_paths_follow_platform_data_directories(self):
+        with patch.dict("os.environ", {"APPDATA": "C:/Users/Example/AppData/Roaming", "XDG_DATA_HOME": "/tmp/cgp-data"}):
+            self.assertEqual(SQLiteRepository.default_database_path("nt"), Path("C:/Users/Example/AppData/Roaming/CGP/cgp.sqlite3"))
+            self.assertEqual(SQLiteRepository.default_database_path("posix"), Path("/tmp/cgp-data/cgp/cgp.sqlite3"))
 
 
 if __name__ == "__main__":
