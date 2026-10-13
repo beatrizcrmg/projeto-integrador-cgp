@@ -33,6 +33,12 @@ make run
 
 O aplicativo usa apenas bibliotecas incluídas no Python e salva o banco em `~/.local/share/cgp/cgp.sqlite3`, respeitando `XDG_DATA_HOME` quando definido.
 
+## Pacotes de instalação
+
+Baixe o pacote `.deb` para Linux ou o executável `.exe` para Windows na [última release do GitHub](https://github.com/beatrizcrmg/projeto-integrador-python/releases/latest). No Linux, instale o pacote com `sudo apt install ./cgp_1.0.0_all.deb`. No Windows, execute `CGP-1.0.0-windows-x64.exe`.
+
+Para construir o pacote Debian localmente, execute `make package-deb`; o arquivo será criado em `dist/`.
+
 ## Capturas de tela
 
 As imagens mostram somente as janelas do aplicativo, sem a janela de terminal.

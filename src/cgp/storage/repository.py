@@ -30,12 +30,23 @@ class SQLiteRepository:
 
     def __init__(self, database_path=None):
         if database_path is None:
-            data_home = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-            database_path = data_home / "cgp" / "cgp.sqlite3"
+            database_path = self.default_database_path()
         self.database_path = Path(database_path).expanduser()
         if str(self.database_path) != ":memory:":
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
+
+    @staticmethod
+    def default_database_path(platform=None):
+        if platform is None:
+            platform = os.name
+        if platform == "nt":
+            app_data = os.environ.get("APPDATA")
+            data_home = Path(app_data) if app_data else Path.home() / "AppData" / "Roaming"
+            return data_home / "CGP" / "cgp.sqlite3"
+        xdg_data_home = os.environ.get("XDG_DATA_HOME")
+        data_home = Path(xdg_data_home) if xdg_data_home else Path.home() / ".local" / "share"
+        return data_home / "cgp" / "cgp.sqlite3"
 
     def _connect(self):
         connection = sqlite3.connect(str(self.database_path), timeout=10)
